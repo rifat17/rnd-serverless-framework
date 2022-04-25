@@ -1,0 +1,70 @@
+# service: aws-python-project-auth
+
+# frameworkVersion: '3'
+
+# provider:
+#   name: aws
+#   runtime: python3.8
+#   profile: hasib
+#   region: 'us-east-1'
+#   stage: ${opt:stage, 'dev'}
+#   role:
+#     Fn::ImportValue: serverless-${opt:stage}-IamRoleLambdaExecution
+
+#   apiGateway:
+#     restApiId: 
+#       Fn::ImportValue: 'serverless-${opt:stage}-RestApiId'
+#     restApiRootResourceId:
+#       Fn::ImportValue: 'serverless-${opt:stage}-RootResourceId'
+#     restApiResources:
+#       auth: { 'Fn::ImportValue': 'serverless-${opt:stage}-AuthApiGatewayResource' }
+
+#   environment:
+#     TableName:
+#       Fn::ImportValue: serverless-${opt:stage}-${self:custom.TableName}
+#     UserPoolID:
+#       Fn::ImportValue: ${self:provider.stage}-ServerlessCognitoUserPool
+
+# functions:
+#   userSignup:
+#     handler: lambdas/func/auth/signup.handler
+#     events:
+#       - http:
+#           path: signup
+#           method: POST
+#           cors: true
+#     environment:
+#       TableName: ${self:provider.environment.TableName}
+#       UserPoolID: 
+#         Ref: ${self:provider.environment.UserPoolID}
+
+#   postConfirmationLambda:
+#     handler: lambdas/func/auth/PostConfirmation_ConfirmSignUp.handler
+#     events:
+#       - cognitoUserPool:
+#           pool: ServerlessUserPool
+#           trigger: PostConfirmation
+
+
+
+
+# EmailConfiguration:
+#   EmailSendingAccount: DEVELOPER
+#   From: !Ref EmailSendingFrom
+#   SourceArn: !Ref EmailSendingSESSource
+# SmsConfiguration:
+#   SnsCallerArn: !GetAtt CustomSNSRole.Arn
+# LambdaConfig:
+#   KMSKeyID: !GetAtt CustomKey.Arn
+#   PreSignUp: !GetAtt PreSignUpFunction.Arn
+#   PostConfirmation: !GetAtt PostConfirmationFunction.Arn
+#   PreAuthentication: !GetAtt PreAuthenticationFunction.Arn
+#   #        PostAuthentication: !GetAtt CognitoSignInHookLambda.Arn
+#   CustomSMSSender:
+#     LambdaArn: !GetAtt CustomSMSSenderFunction.Arn
+#     LambdaVersion: V1_0
+#   CustomEmailSender:
+#     LambdaArn: !GetAtt CustomEmailSenderFunction.Arn
+#     LambdaVersion: V1_0
+
+# "Fn::GetAtt": [ S3toEc2LambdaLambdaFunction, Arn ]

@@ -1,0 +1,4 @@
+requests
+ksuid
+pydantic[email]
+aws-encryption-sdk

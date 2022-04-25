@@ -1,0 +1,33 @@
+# app: aws-python-project
+service: aws-python-project-queue
+# frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: python3.8
+  profile: hasib
+  region: 'us-east-1'
+  stage: ${opt:stage, 'dev'}
+
+
+
+
+functions:
+  hello:
+    handler: handler.hello
+    events:
+      - http:
+          path: get-hello-queue
+          method: GET
+          cors: true
+    environment:
+      NestedTableName: ${cf:aws-python-project-${opt:stage, 'dev'}.DynamoDBTableName}
+
+
+
+# https://github.com/serverless/serverless/blob/main/docs/providers/aws/events/apigateway.md#share-api-gateway-and-api-resources
+
+# https://github.com/serverless/serverless/issues/4715#issuecomment-736058258
+
+# Warning: Invalid configuration encountered
+#   at 'functions.customMsg.events.0.cognitoUserPool.trigger': must be equal to one of the allowed values [PreSignUp, PostConfirmation, PreAuthentication, PostAuthentication, PreTokenGeneration, CustomMessage, DefineAuthChallenge, CreateAuthChallenge, VerifyAuthChallengeResponse, UserMigration]

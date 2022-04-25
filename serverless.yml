@@ -1,0 +1,624 @@
+# app: aws-python-project
+service: aws-python-project
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: python3.8
+  profile: hasib
+  region: 'us-east-1'
+  stage: ${opt:stage, 'dev'}
+  layers:
+    - arn:aws:lambda:${aws:region}:017000801446:layer:AWSLambdaPowertoolsPython:17
+    - { Ref: ServerlessLibsLambdaLayer }
+  #    - { Ref: offlineLayersLambdaLayer }
+  # NotificationQueue: 
+  #   { Ref: NotificationQueue }
+
+  environment:
+    TableName: ${self:custom.TableName}
+    CUSTOM_KEY_ID: !Ref CustomKey
+    CUSTOM_KEY_ARN:
+      Fn::GetAtt: ['CustomKey', 'Arn']
+    SQS_URL: !Ref NotificationQueue
+
+    EmailSendingFrom:  ${self:custom.EmailSendingFrom}
+    EmailSendingSESSource:  ${self:custom.EmailSendingSESSource}
+    RestApiId:
+      Ref: ApiGatewayRestApi
+    STAGE_NAME: ${self:provider.stage}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:*
+        - kms:*
+        - sqs:*
+        - ses:*
+        - cognito-idp:*
+        - lambda:*
+      Resource: '*'
+
+package:
+  exclude:
+    - node_modules/**
+    - .venv/**
+
+#plugins:
+#  - serverless-offline
+
+custom:
+  TableName: ${self:provider.stage}-ServerlessFrameworkRND
+  UserPoolName: ${self:provider.stage}-ServerlessCognitoUserPool
+  UserPoolClientName: ${self:provider.stage}-ServerlessUserPoolClient
+  IdentityPoolName: ${self:provider.stage}-ServerlessIdentityPoolName
+  UserPoolDomain: ${self:provider.stage}-serverless-domain-shadhinlab
+  NotificationQueueName: ${self:provider.stage}-ServerlessNotificationQueue
+  EmailSendingFrom: "Serverless Framework Development< a.hasib.rifat@gmail.com >"
+  EmailSendingSESSource: "arn:aws:ses:us-east-1:534678543881:identity/a.hasib.rifat@gmail.com"
+
+  
+  pythonRequirements:
+    dockerizePip: true
+    zip: true
+    slim: true
+#  serverless-offline:
+#    useDocker: true
+
+functions:
+
+  helloServerlessFramework:
+    handler: handler.hello
+    events:
+      - http:
+          path: get-hello
+          method: GET
+          cors: true
+
+  # getUser:
+  #   handler: lambdas/func/get_user.handler
+  #   events:
+  #     - http:
+  #         path: get-user/{userId}
+  #         method: GET
+  #         cors: true
+
+
+  userSignup:
+    handler: lambdas/func/auth/signup.handler
+    events:
+      - http:
+          path: auth/signup
+          method: POST
+          cors: true
+    environment:
+      UserPoolID:
+        Ref: ServerlessUserPool
+      UserPoolClientID:
+        Ref: UserPoolClient
+
+  userSignin:
+    handler: lambdas/func/auth/signin.handler
+    role: CustomLambdaRole
+    events:
+      - http:
+          path: auth/signin
+          method: POST
+          cors: true
+    environment:
+      UserPoolID:
+        Ref: ServerlessUserPool
+      UserPoolClientID:
+        Ref: UserPoolClient
+      IdentityPoolId:
+        Ref: UserIdentityPool
+      CustomRole:
+        Fn::GetAtt: [ CustomLambdaRole, Arn ]
+
+  privateApi:
+    handler: lambdas/func/auth/private.handler
+    events:
+      - http:
+          path: auth/private-api
+          method: get
+          cors: true
+          integration: lambda
+          authorizer:
+            name: MyAuthorizer
+            type: COGNITO_USER_POOLS
+            arn:
+              Fn::GetAtt:
+                - ServerlessUserPool
+                - Arn
+
+  signoutApi:
+    handler: lambdas/func/auth/signout.handler
+    events:
+      - http:
+          path: auth/signout
+          method: post
+          cors: true
+          integration: lambda
+          authorizer:
+            name: MyAuthorizer
+            type: COGNITO_USER_POOLS
+            arn:
+              Fn::GetAtt:
+                - ServerlessUserPool
+                - Arn
+
+            
+  publicApi:
+    handler: lambdas/func/auth/public.handler
+    events:
+      - http:
+          path: auth/public-api
+          method: get  
+          cors: true
+
+  # postConfirmation:
+  #   handler: lambdas/func/auth/PostConfirmation_ConfirmSignUp.handler
+  #   events:
+  #     - cognitoUserPool:
+  #         pool: ${self:custom.UserPoolName}
+  #         trigger: PostConfirmation
+  #         existing: true
+
+  customMsg:
+    handler: lambdas/func/auth/custom_msg.handler
+#    dependsOn:
+#      - ServerlessUserPool
+    # events:
+    #   - cognitoUserPool:
+    #       pool: ${self:custom.UserPoolName}
+    #       trigger: CustomMessage #CustomMessage_SignUp CustomMessage
+    #       existing: true
+
+  queueProcessor:
+    handler: lambdas/func/util/queue_processor.handler
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt: [ NotificationQueue, Arn ]
+          batchSize: 1
+
+  confirmSignup:
+    handler: lambdas/func/auth/confirm_signup.handler
+    events:
+      - http:
+          path: auth/confirm-signup
+          method: POST
+          cors: true
+    environment:
+      # TableName: ${self:custom.TableName}
+      UserPoolID:
+        Ref: ServerlessUserPool
+      UserPoolClientID:
+        Ref: UserPoolClient
+
+
+layers:
+  ServerlessLibs:
+    path: lambda_layer
+    compatibleRuntimes:
+      - python3.8
+#  offlineLayers:
+#    path: offline_lambda_layer
+#    compatibleRuntimes:
+#      - python3.8
+
+
+resources:
+  # Transform: AWS::Serverless-2016-10-31
+  Resources:
+    GatewayResponseDefault4XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
+        ResponseType: DEFAULT_4XX
+        RestApiId:
+          Ref: 'ApiGatewayRestApi'
+
+    # LambdaPowertools:
+    #   Type: AWS::Serverless::Application
+    #   Properties:
+    #     Location:
+    #       ApplicationId: arn:aws:serverlessrepo:eu-west-1:057560766410:applications/aws-lambda-powertools-python-layer
+    #       SemanticVersion: 1.24.1
+
+    UserPoolLambdaInvokePermission:
+      Type: AWS::Lambda::Permission
+      Properties:
+        Action: lambda:invokeFunction
+        Principal: cognito-idp.amazonaws.com
+        FunctionName:
+          Fn::GetAtt: [CustomMsgLambdaFunction, Arn]
+        SourceArn: !Sub "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*"
+
+    CustomLambdaRole:
+      Type: AWS::IAM::Role
+      Properties:
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        Policies:
+          - PolicyName: root
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - "acm:*"
+                    - "application-autoscaling:*"
+                    - "cloudwatch:*"
+                    - "cloudformation:*"
+                    - "cognito-identity:*"
+                    - "cognito-idp:*"
+                    - "cognito-sync:*"
+                    - "cloudfront-vod:*"
+                    - "dynamodb:*"
+                    - "dax:*"
+                    - "datapipeline:*"
+                    - "ec2:*"
+                    - "iam:*"
+                    - "kms:*"
+                    - "kinesis:*"
+                    - "lambda:*"
+                    - "logs:*"
+                    - "mediaconvert:*"
+                    - "mediapackage-vod:*"
+                    - "mobiletargeting:*"
+                    - "outposts:*"
+                    - "pi:*"
+                    - "rds:*"
+                    - "es:*"
+                    - "redshift:*"
+                    - "resource-groups:*"
+                    - "s3:*"
+                    - "secretsmanager:*"
+                    - "sns:*"
+                    - "sqs:*"
+                    - "ses:*"
+                    - "states:*"
+                    - "tag:*"
+                    - "chime:*"
+                    - "execute-api:*"
+                    - "events:*"
+                    - "appconfig:*"
+                  Resource: '*'
+                - Effect: Allow
+                  Action:
+                    - "rds-db:connect"
+                  Resource: !Sub "arn:aws:rds:us-west-2:${AWS::AccountId}:db-proxy:*/*"
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            -
+              Effect: Allow
+              Principal:
+                Service:
+                  - 'lambda.amazonaws.com'
+                  - 'mediaconvert.amazonaws.com'
+                  - 'cloudfront.amazonaws.com'
+                  - !Sub "states.${AWS::Region}.amazonaws.com"
+                  - 'mediapackage.amazonaws.com'
+                  - 'rds.amazonaws.com'
+                  - 'secretsmanager.amazonaws.com'
+              Action:
+                - 'sts:AssumeRole'
+                
+    DynamoDBTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.TableName}
+        KeySchema:
+          - AttributeName: PK
+            KeyType: HASH
+          - AttributeName: SK
+            KeyType: RANGE
+        AttributeDefinitions:
+          - AttributeName: PK
+            AttributeType: S
+          - AttributeName: SK
+            AttributeType: S
+        BillingMode: PAY_PER_REQUEST
+
+
+    CognitoUnauthenticatedUserPoolClientRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Principal:
+                Federated: "cognito-identity.amazonaws.com"
+              Action:
+                - "sts:AssumeRoleWithWebIdentity"
+              Condition:
+                StringEquals:
+                  "cognito-identity.amazonaws.com:aud": !Ref UserIdentityPool
+                "ForAnyValue:StringLike":
+                  "cognito-identity.amazonaws.com:amr": unauthenticated
+        Policies:
+          - PolicyName: !Sub "${self:custom.UserPoolName}_unauthenticated_policy"
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: "Allow"
+                  Action:
+                    - "mobileanalytics:PutEvents"
+                    - "cognito-sync:*"
+                    - "s3:*"
+                  Resource: "*"
+
+    CognitoAuthenticatedUserPoolClientRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Principal:
+                Federated: "cognito-identity.amazonaws.com"
+              Action:
+                - "sts:AssumeRoleWithWebIdentity"
+              Condition:
+                StringEquals:
+                  "cognito-identity.amazonaws.com:aud": !Ref UserIdentityPool
+                "ForAnyValue:StringLike":
+                  "cognito-identity.amazonaws.com:amr": authenticated
+        Policies:
+          - PolicyName: !Sub "${self:custom.UserPoolName}_authenticated_policy"
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: "Allow"
+                  Action:
+                    - "mobileanalytics:PutEvents"
+                    - "cognito-sync:*"
+                    - "cognito-identity:*"
+                    - "s3:*"
+                  Resource: "*"
+                - Effect: "Allow"
+                  Action:
+                    - "lambda:InvokeFunction"
+                    - "chime:*"
+                    - "cognito-idp:*"
+                  Resource: "*"
+
+    IdentityPoolRoleMapping:
+      Type: AWS::Cognito::IdentityPoolRoleAttachment
+      Properties:
+        IdentityPoolId: !Ref UserIdentityPool
+        RoleMappings:
+          CognitoProvider:
+#            IdentityProvider: !Sub "cognito-idp.${AWS::Region}.amazonaws.com/${self:custom.UserPoolName}:${self:custom.UserPoolClientName}"
+            # IdentityProvider: !Join ["", ["cognito-idp.", !Ref "AWS::Region", ".amazonaws.com" , "/", !Ref UserPool, ":", !Ref UserPoolClient],]
+            IdentityProvider:
+              !Join 
+                - ''
+                - - !Sub "cognito-idp.${AWS::Region}.amazonaws.com/"
+                  - !Ref ServerlessUserPool
+                  - ':'
+                  - !Ref UserPoolClient
+                
+            AmbiguousRoleResolution: AuthenticatedRole # AuthenticatedRole, Deny
+            Type: Token # Token, Rules
+        Roles:
+          authenticated: 
+            Fn::GetAtt: [CognitoAuthenticatedUserPoolClientRole, Arn]
+          unauthenticated: 
+            Fn::GetAtt: [CognitoUnauthenticatedUserPoolClientRole, Arn]
+
+
+
+
+    ServerlessUserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: ${self:custom.UserPoolName}
+        AliasAttributes:
+          - email
+        AutoVerifiedAttributes:
+          - email
+        Schema:
+          - Name: signupMedium
+            AttributeDataType: String
+            Mutable: true
+            Required: false
+            StringAttributeConstraints:
+              MaxLength: '256'
+              MinLength: '1'
+          - Name: userId
+            AttributeDataType: String
+            Mutable: true
+            Required: false
+            StringAttributeConstraints:
+              MaxLength: '256'
+              MinLength: '1'
+
+        UsernameConfiguration:
+          CaseSensitive: false
+
+        AccountRecoverySetting:
+          RecoveryMechanisms:
+            - Name: verified_email
+              Priority: 1
+
+        EmailConfiguration:
+          EmailSendingAccount: DEVELOPER
+          From: ${self:custom.EmailSendingFrom}
+          SourceArn: ${self:custom.EmailSendingSESSource}
+
+        LambdaConfig:
+          KMSKeyID: !GetAtt CustomKey.Arn
+          CustomEmailSender:
+            LambdaArn: 
+              "Fn::GetAtt": [ CustomMsgLambdaFunction, Arn ]
+            LambdaVersion: V1_0
+
+        # EmailVerificationMessage: Please click the link below to verify your email address. {####}
+        # EmailVerificationSubject: Verify your Account
+
+        # LambdaConfig:
+        #   PostConfirmation: postConfirmationLambda
+
+        # VerificationMessageTemplate:
+          # DefaultEmailOption: CONFIRM_WITH_LINK
+          # EmailSubject: Verify your email id for AlumniAPP
+          # EmailMessage: Please click the link below to verify your email address. {####}
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 6
+            RequireLowercase: false
+            RequireNumbers: false
+            RequireSymbols: false
+            RequireUppercase: false
+
+
+    UserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: ${self:custom.UserPoolClientName}
+        UserPoolId:
+          Ref: ServerlessUserPool
+        GenerateSecret: false
+        SupportedIdentityProviders:
+          - COGNITO
+        AllowedOAuthFlows:
+          - code
+        #   - implicit
+        # AllowedOAuthScopes:
+        #   - email
+        #   - openid
+        #   - profile
+        #   - aws.cognito.signin.user.admin
+        CallbackURLs:
+          - http://localhost:3000/login
+        LogoutURLs:
+          - http://localhost:3000/login
+        DefaultRedirectURI: http://localhost:3000/login
+
+
+        ExplicitAuthFlows:
+          - ALLOW_ADMIN_USER_PASSWORD_AUTH
+          - ALLOW_USER_SRP_AUTH
+          - ALLOW_REFRESH_TOKEN_AUTH
+          - ALLOW_USER_PASSWORD_AUTH
+
+    UserIdentityPool:
+      Type: AWS::Cognito::IdentityPool
+      Properties:
+        IdentityPoolName: ${self:custom.IdentityPoolName}
+        AllowUnauthenticatedIdentities: true
+        CognitoIdentityProviders:
+          - ClientId: !Ref UserPoolClient
+            # ProviderName: !GetAtt ServerlessUserPool.ProviderName
+            ProviderName: 
+              "Fn::GetAtt": [ ServerlessUserPool, ProviderName ]
+
+
+    UserPoolDomain:
+      Type: AWS::Cognito::UserPoolDomain
+      Properties:
+        UserPoolId: 
+          Ref: ServerlessUserPool
+        Domain: ${self:custom.UserPoolDomain} 
+    
+    NotificationQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:custom.NotificationQueueName}
+        VisibilityTimeout: 60
+    CustomKeyAlias:
+      Type: AWS::KMS::Alias
+      Properties:
+        AliasName: alias/CustomKeyServerlessRnd
+        TargetKeyId: !Ref CustomKey 
+
+    CustomKey:
+      Type: AWS::KMS::Key
+      Properties:
+        Description: An example symmetric CMK
+        EnableKeyRotation: true
+        PendingWindowInDays: 20
+        KeyPolicy:
+          Version: '2012-10-17'
+          Id: key-default-1
+          Statement:
+            - Sid: Enable IAM User Permissions
+              Effect: Allow
+              Principal:
+                AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              Action: kms:*
+              Resource: '*'
+    signupEmailTemplate:
+      Type: AWS::SES::Template
+      Properties:
+        Template:
+          TemplateName: 'regular_signup_template'
+          SubjectPart: 'Please verify your email'
+          TextPart: "Dear {{name}}, \nThank you for registering with us. Please click on the link below to verify your account. \n\n{{link}}\n\n Link is valid for {{valid_for_mins}} minutes."
+          HtmlPart: "<h1>Dear {{name}},</h1><body>Thank you for registering with us. Please click on the link below to verify your account.  <br>{{link}}<br> Link is valid for {{valid_for_mins}} minutes.</body>"
+    # # Rest API
+    # ApiGatewayRestApi:
+    #   Type: AWS::ApiGateway::RestApi
+    #   Properties:
+    #     Name: ApiGW
+    #     Description: API Gateway
+
+
+    # AuthResource:
+    #   Type: AWS::ApiGateway::Resource
+    #   Properties:
+    #     RestApiId:
+    #       Ref: ApiGatewayRestApi
+    #     ParentId:
+    #       Fn::GetAtt:
+    #         - ApiGatewayRestApi
+    #         - RootResourceId
+    #     PathPart: 'auth'
+
+
+
+  Outputs:
+    # RestApi resource ID (e.g. ei829oe)
+    RestApiId:
+      Value:
+        Ref: ApiGatewayRestApi
+      Export:
+        Name: rootRestApiId
+    # RestApi Root Resource (the implicit '/' path)
+    RootResourceId:
+      Value:
+        Fn::GetAtt: ApiGatewayRestApi.RootResourceId
+      Export:
+        Name: RootResourceId
+    # The IAM Role for Lambda execution
+    IamRoleLambdaExecution:
+      Value:
+        Fn::GetAtt: IamRoleLambdaExecution.Arn
+      Export:
+        Name: IamRoleLambdaExecution
+
+    # Auth Resources
+    # AuthApiGatewayResource:
+    #   Value:
+    #     Ref: AuthResource
+    #   Export:
+    #     Name: AuthApiGatewayResource
+
+    # Table Resources
+    DynamoDBTable:
+      Value:
+        Ref: DynamoDBTable
+      Export:
+        Name: DynamoDBTableName
+
+    # Table Resources
+    CognitoUserPoolId:
+      Value:
+        Ref: ServerlessUserPool
+      Export:
+        Name: ServerlessCognitoUserPoolId
